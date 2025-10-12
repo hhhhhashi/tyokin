@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class StockListScreen extends StatefulWidget {
-  const StockListScreen({super.key});
+  final bool showNearExpiryOnly; // ←追加！
+
+  const StockListScreen({super.key, this.showNearExpiryOnly = false});
 
   @override
   State<StockListScreen> createState() => _StockListScreenState();
@@ -34,6 +36,13 @@ class _StockListScreenState extends State<StockListScreen> {
       appBar: AppBar(
         title: const Text('在庫一覧'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.calendar_today),
+            tooltip: '摂取カレンダー',
+            onPressed: () {
+              Navigator.pushNamed(context, '/calendar');
+            },
+          ),
           IconButton(
             icon: const Icon(Icons.add),
             tooltip: '在庫追加',
