@@ -3,6 +3,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'firebase_options.dart';
+import 'screens/intake_add_screen.dart';
 import 'screens/stock_add_screen.dart';
 import 'screens/stock_list_screen.dart';
 
@@ -39,6 +40,7 @@ class TorirecoApp extends StatelessWidget {
       routes: {
         '/': (context) => const StockListScreen(),
         '/add': (context) => const StockAddScreen(),
+        '/intake': (context) => const IntakeAddScreen(), // ←これを追加
       },
     );
   }

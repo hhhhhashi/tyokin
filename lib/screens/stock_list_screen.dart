@@ -148,6 +148,13 @@ class _StockListScreenState extends State<StockListScreen> {
           ),
         ],
       ),
+      floatingActionButton: FloatingActionButton.extended(
+      onPressed: () {
+        Navigator.pushNamed(context, '/intake');
+      },
+      icon: const Icon(Icons.restaurant),
+      label: const Text('摂取追加'),
+      ),
     );
   }
 }
