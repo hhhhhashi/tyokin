@@ -3,6 +3,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
+import 'stock_list_screen.dart';
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
 
@@ -213,32 +215,54 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // ⏰ 賞味期限カード
   Widget _buildExpiryCard() {
-    return Card(
-      elevation: 3,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      color: _nearExpiryCount > 0 ? Colors.red[50] : null,
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            Icon(
-              _nearExpiryCount > 0 ? Icons.warning_amber : Icons.check_circle,
-              color: _nearExpiryCount > 0 ? Colors.red : Colors.green,
-              size: 32,
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () {
+        if (_nearExpiryCount > 0) {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => const StockListScreen(showNearExpiryOnly: true),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                _nearExpiryCount > 0
-                    ? '⚠️ 賞味期限が近いパック：$_nearExpiryCount 件'
-                    : 'すべてのストックは安全です！',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: _nearExpiryCount > 0 ? Colors.red[700] : Colors.green[700],
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('期限が近いパックはありません')),
+          );
+        }
+      },
+      child: Card(
+        elevation: 3,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        color: _nearExpiryCount > 0 ? Colors.red[50] : null,
+        child: Padding(
+          padding: const EdgeInsets.all(20),
+          child: Row(
+            children: [
+              Icon(
+                _nearExpiryCount > 0 ? Icons.warning_amber : Icons.check_circle,
+                color: _nearExpiryCount > 0 ? Colors.red : Colors.green,
+                size: 32,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  _nearExpiryCount > 0
+                      ? '⚠️ 賞味期限が近いパック：$_nearExpiryCount 件'
+                      : 'すべてのストックは安全です！',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: _nearExpiryCount > 0
+                        ? Colors.red[700]
+                        : Colors.green[700],
+                  ),
                 ),
               ),
-            ),
-          ],
+              if (_nearExpiryCount > 0)
+                const Icon(Icons.arrow_forward_ios,
+                    size: 16, color: Colors.grey),
+            ],
+          ),
         ),
       ),
     );

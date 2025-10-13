@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
 class StockListScreen extends StatefulWidget {
-  final bool showNearExpiryOnly; // ←追加！
+  final bool showNearExpiryOnly;
 
   const StockListScreen({super.key, this.showNearExpiryOnly = false});
 
@@ -13,66 +13,105 @@ class StockListScreen extends StatefulWidget {
 }
 
 class _StockListScreenState extends State<StockListScreen> {
-  String _selectedTab = 'refrigerated'; // 'refrigerated' or 'frozen'
+  String _selectedTab = 'refrigerated'; // 通常モード用
+  final uid = FirebaseAuth.instance.currentUser?.uid;
+
+  Stream<QuerySnapshot> _getStocksStream(String uid) {
+    final now = DateTime.now();
+    final limitDate = now.add(const Duration(days: 3));
+
+    final ref = FirebaseFirestore.instance
+        .collection('users')
+        .doc(uid)
+        .collection('stocks');
+
+    if (widget.showNearExpiryOnly) {
+      // ⚠️ 賞味期限が近いパックのみ
+      return ref
+          .where('expirationDate',
+              isLessThanOrEqualTo: Timestamp.fromDate(limitDate))
+          .orderBy('expirationDate')
+          .snapshots();
+    } else {
+      // 通常モード：冷蔵／冷凍ごと
+      return ref
+          .where('storageType', isEqualTo: _selectedTab)
+          .orderBy('expirationDate')
+          .snapshots();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final uid = FirebaseAuth.instance.currentUser?.uid;
     if (uid == null) {
       return const Scaffold(
-        body: Center(child: Text('ログインエラー（UIDが取得できません）')),
+        body: Center(child: Text('ログイン情報が見つかりません')),
       );
     }
 
-    final stream = FirebaseFirestore.instance
-        .collection('users')
-        .doc(uid)
-        .collection('stocks')
-        .where('storageType', isEqualTo: _selectedTab)
-        .orderBy('expirationDate')
-        .snapshots();
-
     return Scaffold(
       appBar: AppBar(
-        title: const Text('在庫一覧'),
+        title: Text(widget.showNearExpiryOnly
+            ? '⚠️ 賞味期限が近い在庫一覧'
+            : '在庫一覧'),
         actions: [
+        if (!widget.showNearExpiryOnly) // ← 通常モードの時だけボタン表示
           IconButton(
             icon: const Icon(Icons.calendar_today),
-            tooltip: '摂取カレンダー',
             onPressed: () {
               Navigator.pushNamed(context, '/calendar');
             },
           ),
+        if (!widget.showNearExpiryOnly)
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: '在庫追加',
             onPressed: () {
               Navigator.pushNamed(context, '/add');
             },
           ),
-        ],
+      ],
       ),
+      
       body: Column(
         children: [
-          const SizedBox(height: 8),
-          SegmentedButton<String>(
-            segments: const [
-              ButtonSegment(value: 'refrigerated', label: Text('冷蔵')),
-              ButtonSegment(value: 'frozen', label: Text('冷凍')),
-            ],
-            selected: {_selectedTab},
-            onSelectionChanged: (s) => setState(() => _selectedTab = s.first),
-          ),
-          const Divider(),
+          // タブ切り替え（賞味期限モードでは非表示）
+          if (!widget.showNearExpiryOnly)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+              child: ToggleButtons(
+                borderRadius: BorderRadius.circular(8),
+                isSelected: [
+                  _selectedTab == 'refrigerated',
+                  _selectedTab == 'frozen',
+                ],
+                onPressed: (index) {
+                  setState(() {
+                    _selectedTab = index == 0 ? 'refrigerated' : 'frozen';
+                  });
+                },
+                children: const [
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('冷蔵'),
+                  ),
+                  Padding(
+                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    child: Text('冷凍'),
+                  ),
+                ],
+              ),
+            ),
+
+          // Firestoreデータ一覧
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
-              stream: stream,
+              stream: _getStocksStream(uid!),
               builder: (context, snapshot) {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
                 if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Center(child: Text('登録された在庫がありません'));
+                  return const Center(child: Text('在庫がありません'));
                 }
 
                 final docs = snapshot.data!.docs;
@@ -81,72 +120,41 @@ class _StockListScreenState extends State<StockListScreen> {
                   itemCount: docs.length,
                   itemBuilder: (context, index) {
                     final data = docs[index].data() as Map<String, dynamic>;
-                    final expiration = (data['expirationDate'] as Timestamp?)?.toDate();
-                    final purchase = (data['purchaseDate'] as Timestamp?)?.toDate();
-                    final weight = data['weight'] ?? 0;
-                    final remaining = data['remainingWeight'] ?? 0;
-                    final isExpired = expiration != null && expiration.isBefore(DateTime.now());
-                    final daysLeft = expiration == null
-                        ? null
-                        : expiration.difference(DateTime.now()).inDays;
+                    final name = data['name'] ?? '胸肉';
+                    final exp = (data['expirationDate'] as Timestamp?)?.toDate();
+                    final storageType = data['storageType'] ?? '';
+                    final remain = data['remainingWeight'] ?? 0;
+
+                    final expText = exp != null
+                        ? DateFormat('yyyy/MM/dd').format(exp)
+                        : '不明';
+                    final typeLabel = storageType == 'refrigerated'
+                        ? '冷蔵'
+                        : storageType == 'frozen'
+                            ? '冷凍'
+                            : '不明';
 
                     return Card(
                       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                      elevation: 2,
                       child: ListTile(
-                        leading: Icon(
-                          _selectedTab == 'refrigerated'
-                              ? Icons.kitchen_outlined
-                              : Icons.ac_unit,
-                          color: _selectedTab == 'refrigerated'
-                              ? Colors.brown
-                              : Colors.blueGrey,
+                        leading: CircleAvatar(
+                          radius: 22,
+                          backgroundColor: storageType == 'refrigerated'
+                              ? Colors.orangeAccent.withOpacity(0.2)
+                              : Colors.lightBlueAccent.withOpacity(0.2),
+                          child: Icon(
+                            storageType == 'refrigerated' ? Icons.kitchen : Icons.ac_unit,
+                            color: storageType == 'refrigerated'
+                                ? Colors.orangeAccent
+                                : Colors.lightBlueAccent,
+                          ),
                         ),
-                        title: Text('${weight}g（残り${remaining}g）'),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            if (purchase != null)
-                              Text('購入日: ${DateFormat('yyyy/MM/dd').format(purchase)}'),
-                            if (expiration != null)
-                              Text(
-                                '賞味期限: ${DateFormat('yyyy/MM/dd').format(expiration)}',
-                                style: TextStyle(
-                                  color: isExpired
-                                      ? Colors.red
-                                      : (daysLeft != null && daysLeft <= 2
-                                          ? Colors.orange
-                                          : null),
-                                ),
-                              ),
-                            if (daysLeft != null && daysLeft >= 0)
-                              Text('残り $daysLeft 日', style: const TextStyle(fontSize: 12)),
-                          ],
+                        title: Text(
+                          '残り ${remain}g（${storageType == 'refrigerated' ? '冷蔵' : '冷凍'}）',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () async {
-                            final ok = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                title: const Text('削除しますか？'),
-                                content: const Text('この在庫データを削除します。'),
-                                actions: [
-                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('キャンセル')),
-                                  FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('削除')),
-                                ],
-                              ),
-                            );
-                            if (ok == true) {
-                              await docs[index].reference.delete();
-                              if (mounted) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  const SnackBar(content: Text('削除しました')),
-                                );
-                              }
-                            }
-                          },
+                        subtitle: Text(
+                          '賞味期限：${DateFormat('yyyy/MM/dd').format(exp ?? DateTime.now())}',
                         ),
                       ),
                     );
@@ -157,13 +165,18 @@ class _StockListScreenState extends State<StockListScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-      onPressed: () {
-        Navigator.pushNamed(context, '/intake');
-      },
-      icon: const Icon(Icons.restaurant),
-      label: const Text('摂取追加'),
-      ),
+
+      // 🚫 賞味期限モードではボタン非表示
+      floatingActionButton: widget.showNearExpiryOnly
+          ? null
+          : FloatingActionButton.extended(
+              onPressed: () {
+                Navigator.pushNamed(context, '/intake');
+              },
+              icon: const Icon(Icons.fitness_center),
+              label: const Text('摂取記録'),
+              backgroundColor: Colors.orangeAccent,
+            ),
     );
   }
 }

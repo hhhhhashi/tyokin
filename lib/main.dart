@@ -45,6 +45,7 @@ class TorirecoApp extends StatelessWidget {
         '/intake': (context) => const IntakeAddScreen(), // ←これを追加
         '/calendar': (context) => const IntakeCalendarScreen(), // ←追加
         '/stockList': (context) => const StockListScreen(), 
+        '/stockList': (context) => const StockListScreen(), 
       },
     );
   }
