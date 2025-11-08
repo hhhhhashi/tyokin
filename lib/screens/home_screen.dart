@@ -105,10 +105,6 @@ class _HomeScreenState extends State<HomeScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
-                const Text(
-                  '🐔 とりの成長記録',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
                 const SizedBox(height: 8),
                 SizedBox(
                   height: 160,
