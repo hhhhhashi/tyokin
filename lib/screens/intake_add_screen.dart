@@ -169,18 +169,24 @@ class _IntakeAddScreenState extends State<IntakeAddScreen> {
                 return DropdownButtonFormField<String>(
                   value: _selectedStockId,
                   isExpanded: true,
-                  items: stocks.map((doc) {
+                  items: docs.map((doc) {
                     final data = doc.data() as Map<String, dynamic>;
-                    final remain =
-                        ((data['remainingWeight'] ?? data['weight'] ?? 0) as num).toInt();
-                    final exp =
-                        (data['expirationDate'] as Timestamp?)?.toDate();
-                    final expText =
-                        exp != null ? DateFormat('MM/dd').format(exp) : '不明';
+
+                    final remain = ((data['remainingWeight'] ?? data['weight'] ?? 0) as num).toInt();
+
+                    final exp = (data['expirationDate'] as Timestamp?)?.toDate();
+                    final expText = exp != null ? DateFormat('MM/dd').format(exp) : '不明';
+
+                    final storageType = (data['storageType'] ?? '') as String;
+                    final storageLabel = storageType == 'refrigerated'
+                        ? '冷蔵'
+                        : storageType == 'frozen'
+                            ? '冷凍'
+                            : '不明';
 
                     return DropdownMenuItem<String>(
                       value: doc.id,
-                      child: Text('$expText｜残り ${remain}g'),
+                      child: Text('[$storageLabel] $expText｜残り ${remain}g'),
                     );
                   }).toList(),
                   onChanged: _saving
