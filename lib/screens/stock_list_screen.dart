@@ -1,6 +1,7 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 
 class StockListScreen extends StatefulWidget {
@@ -41,6 +42,11 @@ class _StockListScreenState extends State<StockListScreen> {
     }
   }
 
+  double _getRemain(Map<String, dynamic> data) {
+    final v = data['remainingWeight'] ?? data['weight'] ?? 0;
+    return (v as num).toDouble();
+  }
+
   @override
   Widget build(BuildContext context) {
     if (uid == null) {
@@ -51,27 +57,24 @@ class _StockListScreenState extends State<StockListScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.showNearExpiryOnly
-            ? '⚠️ 賞味期限が近い在庫一覧'
-            : '在庫一覧'),
+        title: Text(widget.showNearExpiryOnly ? '⚠️ 賞味期限が近い在庫一覧' : '在庫一覧'),
         actions: [
-        if (!widget.showNearExpiryOnly) // ← 通常モードの時だけボタン表示
-          IconButton(
-            icon: const Icon(Icons.calendar_today),
-            onPressed: () {
-              Navigator.pushNamed(context, '/calendar');
-            },
-          ),
-        if (!widget.showNearExpiryOnly)
-          IconButton(
-            icon: const Icon(Icons.add),
-            onPressed: () {
-              Navigator.pushNamed(context, '/add');
-            },
-          ),
-      ],
+          if (!widget.showNearExpiryOnly)
+            IconButton(
+              icon: const Icon(Icons.calendar_today),
+              onPressed: () {
+                Navigator.pushNamed(context, '/calendar');
+              },
+            ),
+          if (!widget.showNearExpiryOnly)
+            IconButton(
+              icon: const Icon(Icons.add),
+              onPressed: () {
+                Navigator.pushNamed(context, '/add');
+              },
+            ),
+        ],
       ),
-      
       body: Column(
         children: [
           // タブ切り替え（賞味期限モードでは非表示）
@@ -116,25 +119,96 @@ class _StockListScreenState extends State<StockListScreen> {
 
                 final docs = snapshot.data!.docs;
 
-                return ListView.builder(
-                  itemCount: docs.length,
-                  itemBuilder: (context, index) {
-                    final data = docs[index].data() as Map<String, dynamic>;
-                    final name = data['name'] ?? '胸肉';
-                    final exp = (data['expirationDate'] as Timestamp?)?.toDate();
-                    final storageType = data['storageType'] ?? '';
-                    final remain = data['remainingWeight'] ?? 0;
+                // ✅ まず表示用に 0g を除外
+                final validDocs = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return _getRemain(data) > 0;
+                }).toList();
 
-                    final expText = exp != null
-                        ? DateFormat('yyyy/MM/dd').format(exp)
-                        : '不明';
+                // ✅ 0g以下は削除対象としてまとめる（build中に直deleteしない）
+                final deleteTargets = docs.where((doc) {
+                  final data = doc.data() as Map<String, dynamic>;
+                  return _getRemain(data) <= 0;
+                }).toList();
+
+                if (deleteTargets.isNotEmpty) {
+                  Future.microtask(() async {
+                    final batch = FirebaseFirestore.instance.batch();
+                    for (final d in deleteTargets) {
+                      batch.delete(d.reference);
+                    }
+                    await batch.commit();
+                  });
+                }
+
+                if (validDocs.isEmpty) {
+                  return const Center(child: Text('在庫がありません'));
+                }
+
+                return ListView.builder(
+                  itemCount: validDocs.length,
+                  itemBuilder: (context, index) {
+                    final data = validDocs[index].data() as Map<String, dynamic>;
+                    final exp = (data['expirationDate'] as Timestamp?)?.toDate();
+                    final storageType = (data['storageType'] ?? '') as String;
+
+                    final remain = _getRemain(data).toInt();
+
                     final typeLabel = storageType == 'refrigerated'
                         ? '冷蔵'
                         : storageType == 'frozen'
                             ? '冷凍'
                             : '不明';
 
-                    return Card(
+                    final expText = exp != null
+                        ? DateFormat('yyyy/MM/dd').format(exp)
+                        : '不明';
+
+                    return Slidable(
+                      key: ValueKey(validDocs[index].id),
+
+                      endActionPane: ActionPane(
+                        motion: const DrawerMotion(),
+                        extentRatio: 0.25,
+                        children: [
+                          SlidableAction(
+                            onPressed: (_) async {
+                              final result = await showDialog<bool>(
+                                context: context,
+                                builder: (_) => AlertDialog(
+                                  title: const Text('削除確認'),
+                                  content: const Text('この在庫を削除しますか？'),
+                                  actions: [
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, false),
+                                      child: const Text('キャンセル'),
+                                    ),
+                                    TextButton(
+                                      onPressed: () => Navigator.pop(context, true),
+                                      child: const Text('削除'),
+                                    ),
+                                  ],
+                                ),
+                              );
+
+                              if (result == true) {
+                                await validDocs[index].reference.delete();
+
+                                if (mounted) {
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(content: Text('在庫を削除しました')),
+                                  );
+                                }
+                              }
+                            },
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            icon: Icons.delete,
+                            label: '削除',
+                          ),
+                        ],
+                      ),
+                    child: Card(
                       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                       child: ListTile(
                         leading: CircleAvatar(
@@ -143,21 +217,22 @@ class _StockListScreenState extends State<StockListScreen> {
                               ? Colors.orangeAccent.withOpacity(0.2)
                               : Colors.lightBlueAccent.withOpacity(0.2),
                           child: Icon(
-                            storageType == 'refrigerated' ? Icons.kitchen : Icons.ac_unit,
+                            storageType == 'refrigerated'
+                                ? Icons.kitchen
+                                : Icons.ac_unit,
                             color: storageType == 'refrigerated'
                                 ? Colors.orangeAccent
                                 : Colors.lightBlueAccent,
                           ),
                         ),
                         title: Text(
-                          '残り ${remain}g（${storageType == 'refrigerated' ? '冷蔵' : '冷凍'}）',
+                          '残り ${remain}g（$typeLabel）',
                           style: const TextStyle(fontWeight: FontWeight.bold),
                         ),
-                        subtitle: Text(
-                          '賞味期限：${DateFormat('yyyy/MM/dd').format(exp ?? DateTime.now())}',
-                        ),
+                        subtitle: Text('賞味期限：$expText'),
                       ),
-                    );
+                    ),
+                  );
                   },
                 );
               },
