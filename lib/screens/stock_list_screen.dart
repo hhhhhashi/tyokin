@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
+import 'package:tyokin/services/stats_service.dart';
 
 class StockListScreen extends StatefulWidget {
   final bool showNearExpiryOnly;
@@ -118,28 +119,11 @@ class _StockListScreenState extends State<StockListScreen> {
                 }
 
                 final docs = snapshot.data!.docs;
-
-                // ✅ まず表示用に 0g を除外
+                // ✅ 0gは表示しないだけ
                 final validDocs = docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   return _getRemain(data) > 0;
                 }).toList();
-
-                // ✅ 0g以下は削除対象としてまとめる（build中に直deleteしない）
-                final deleteTargets = docs.where((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  return _getRemain(data) <= 0;
-                }).toList();
-
-                if (deleteTargets.isNotEmpty) {
-                  Future.microtask(() async {
-                    final batch = FirebaseFirestore.instance.batch();
-                    for (final d in deleteTargets) {
-                      batch.delete(d.reference);
-                    }
-                    await batch.commit();
-                  });
-                }
 
                 if (validDocs.isEmpty) {
                   return const Center(child: Text('在庫がありません'));
@@ -193,6 +177,12 @@ class _StockListScreenState extends State<StockListScreen> {
 
                               if (result == true) {
                                 await validDocs[index].reference.delete();
+
+                                try {
+                                  await StatsService.recomputeNearExpiryCount(uid!);
+                                } catch (e) {
+                                  debugPrint('recomputeNearExpiryCount failed: $e');
+                                }
 
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(

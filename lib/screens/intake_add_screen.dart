@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
+import 'package:tyokin/services/stats_service.dart';
 
 class IntakeAddScreen extends StatefulWidget {
   const IntakeAddScreen({super.key});
@@ -67,47 +68,77 @@ class _IntakeAddScreenState extends State<IntakeAddScreen> {
 
     try {
       await FirebaseFirestore.instance.runTransaction((tx) async {
-        final stockSnap = await tx.get(stockRef);
-        if (!stockSnap.exists) {
-          throw Exception('選択した在庫が存在しません');
-        }
+      // --- refs ---
+      final intakeRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(_uid)
+          .collection('intakeLogs')
+          .doc(); // 自動ID
 
-        final stockData =
-            stockSnap.data() as Map<String, dynamic>;
+      final stockRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(_uid)
+          .collection('stocks')
+          .doc(_selectedStockId);
 
-        final remaining = ((stockData['remainingWeight'] ??
-                stockData['weight'] ??
-                0) as num)
-            .toDouble();
+      final statsRef = FirebaseFirestore.instance
+          .collection('users')
+          .doc(_uid)
+          .collection('stats')
+          .doc('summary');
 
-        if (intakeWeight > remaining) {
-          throw Exception(
-              '在庫が不足しています（残り ${remaining.toInt()}g）');
-        }
+      final stockSnap = await tx.get(stockRef);
+      if (!stockSnap.exists) throw Exception('選択した在庫が存在しません');
 
-        final newRemaining = remaining - intakeWeight;
+      final stockData = stockSnap.data() as Map<String, dynamic>;
+      final remaining = ((stockData['remainingWeight'] ?? stockData['weight'] ?? 0) as num).toDouble();
 
-        tx.set(intakeRef.doc(), {
-          'stockId': _selectedStockId,
-          'intakeWeight': intakeWeight,
-          'proteinAmount': _calcProtein(intakeWeight),
-          'intakeDate':
-              Timestamp.fromDate(_stripTime(_intakeDate)),
-          'createdAt': FieldValue.serverTimestamp(),
-        });
+      if (intakeWeight > remaining) {
+        throw Exception('在庫が不足しています（残り ${remaining.toInt()}g）');
+      }
 
-        tx.update(stockRef, {
-          'remainingWeight': newRemaining,
-        });
+      final newRemaining = remaining - intakeWeight;
+
+      // ① 摂取ログ追加
+      tx.set(intakeRef, {
+        'stockId': _selectedStockId,
+        'intakeWeight': intakeWeight,
+        'proteinAmount': _calcProtein(intakeWeight),
+        'intakeDate': Timestamp.fromDate(_stripTime(_intakeDate)),
+        'createdAt': FieldValue.serverTimestamp(),
       });
+
+      // ② 在庫更新：0以下なら削除、それ以外は更新
+      if (newRemaining <= 0) {
+        tx.delete(stockRef);
+      } else {
+        tx.update(stockRef, {'remainingWeight': newRemaining});
+      }
+
+      // ③ stats 更新（増分）
+      tx.set(
+        statsRef,
+        {
+          'totalIntakeG': FieldValue.increment(intakeWeight),
+          'updatedAt': FieldValue.serverTimestamp(),
+        },
+        SetOptions(merge: true),
+      );
+    });
+      // ✅ 近い賞味期限数も stats に入れる設計なら、ここで再計算する
+      // ※失敗しても摂取登録は成功扱い
+      try {
+        await StatsService.recomputeNearExpiryCount(_uid!);
+      } catch (e) {
+        debugPrint('recomputeNearExpiryCount failed: $e');
+      }
 
       if (!mounted) return;
       _showSnack('摂取記録を登録しました');
       Navigator.pop(context);
+
     } catch (e) {
       if (mounted) _showSnack('登録に失敗しました：$e');
-    } finally {
-      if (mounted) setState(() => _saving = false);
     }
   }
 

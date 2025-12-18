@@ -2,6 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:tyokin/services/stats_service.dart';
 
 /// 在庫追加（手入力）画面
 /// - 賞味期限（日付）
@@ -73,26 +74,39 @@ class _StockAddScreenState extends State<StockAddScreen> {
 
     setState(() => _saving = true);
     try {
-      final ref = FirebaseFirestore.instance
+    // ① まず “在庫登録” だけ確実にやる
+      await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
-          .collection('stocks');
-
-      await ref.add({
+          .collection('stocks')
+          .add({
         'weight': total,
         'remainingWeight': total,
-        'storageType': _storageType, // refrigerated | frozen
+        'storageType': _storageType,
         'expirationDate': Timestamp.fromDate(_stripTime(_expirationDate!)),
         'purchaseDate': Timestamp.fromDate(_stripTime(_purchaseDate!)),
         'createdAt': FieldValue.serverTimestamp(),
-        // 画像やOCRは後日追加: imageUrl, ocrText など
       });
+      // ② stats再計算は “失敗しても登録成功扱い” にする
+      try {
+        await StatsService.recomputeNearExpiryCount(uid);
+      } catch (e) {
+        debugPrint('recomputeNearExpiryCount failed: $e');
+        // ここで失敗Snackは出さない（登録は成功してるため）
+      }
 
       if (!mounted) return;
-      _showSnack('在庫を登録しました');
-      Navigator.of(context).pop(); // 前画面に戻る
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('在庫を登録しました')),
+      );
+
+      Navigator.of(context).pop();
     } catch (e) {
-      _showSnack('登録に失敗しました：$e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('登録に失敗しました：$e')),
+        );
+      }
     } finally {
       if (mounted) setState(() => _saving = false);
     }

@@ -13,6 +13,7 @@ class IntakeCalendarScreen extends StatefulWidget {
 
 class _IntakeCalendarScreenState extends State<IntakeCalendarScreen> {
   DateTime _focusedDay = DateTime.now();
+  CalendarFormat _calendarFormat = CalendarFormat.twoWeeks;
   DateTime? _selectedDay;
   Map<DateTime, double> _proteinPerDay = {};
   static const double _proteinGoal = 100.0; // 目標タンパク質量 (g)
@@ -68,18 +69,38 @@ class _IntakeCalendarScreenState extends State<IntakeCalendarScreen> {
             firstDay: DateTime.utc(2023, 1, 1),
             lastDay: DateTime.utc(2030, 12, 31),
             focusedDay: _focusedDay,
+
             selectedDayPredicate: (day) => isSameDay(day, _selectedDay),
+
+            calendarFormat: _calendarFormat,
+
+            availableCalendarFormats: const {
+              CalendarFormat.month: 'Month',
+              CalendarFormat.twoWeeks: '2 weeks',
+            },
+
+            onFormatChanged: (format) {
+              setState(() {
+                _calendarFormat = format;
+              });
+            },
+
             onDaySelected: (selectedDay, focusedDay) {
               setState(() {
                 _selectedDay = selectedDay;
                 _focusedDay = focusedDay;
               });
             },
-            calendarFormat: CalendarFormat.month,
+
+            onPageChanged: (focusedDay) {
+              _focusedDay = focusedDay;
+            },
+
             calendarBuilders: CalendarBuilders(
               defaultBuilder: (context, day, focusedDay) {
                 final protein = _getProteinForDay(day);
                 if (protein == 0) return null;
+
                 return Container(
                   decoration: BoxDecoration(
                     color: Colors.orangeAccent.withOpacity(0.25),
