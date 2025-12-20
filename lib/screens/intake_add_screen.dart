@@ -170,84 +170,112 @@ class _IntakeAddScreenState extends State<IntakeAddScreen> {
 
               /// ストック選択
               StreamBuilder<QuerySnapshot>(
-              stream: stockStream,
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                  return const Text('ストックがありません');
-                }
+                stream: stockStream,
+                builder: (context, snapshot) {
+                  if (snapshot.connectionState == ConnectionState.waiting) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  if (!snapshot.hasData) {
+                    return const Text('ストックがありません');
+                  }
 
-                // ✅ ① docs を List にコピー
-                final docs = snapshot.data!.docs.toList();
+                  // ① snapshot の docs を取り出す
+                  final rawDocs = snapshot.data!.docs;
 
-                // ✅ ② 賞味期限で並び替え（インデックス不要）
-                docs.sort((a, b) {
-                  final ad = a.data() as Map<String, dynamic>;
-                  final bd = b.data() as Map<String, dynamic>;
+                  if (rawDocs.isEmpty) {
+                    // ストックが0件なら選択もリセット
+                    if (_selectedStockId != null) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted) return;
+                        setState(() {
+                          _selectedStockId = null;
+                          _selectedStockRemaining = 0;
+                          _weightController.clear();
+                        });
+                      });
+                    }
+                    return const Text('ストックがありません');
+                  }
 
-                  final aExp =
-                      (ad['expirationDate'] as Timestamp?)?.toDate() ?? DateTime(2100);
-                  final bExp =
-                      (bd['expirationDate'] as Timestamp?)?.toDate() ?? DateTime(2100);
+                  // ② idで一意化（重複事故を防ぐ）
+                  final unique = <String, QueryDocumentSnapshot>{};
+                  for (final d in rawDocs) {
+                    unique[d.id] = d;
+                  }
+                  final docs = unique.values.toList();
 
-                  return aExp.compareTo(bExp);
-                });
+                  // ③ 賞味期限で並び替え（クエリに orderBy 無くてもOK）
+                  docs.sort((a, b) {
+                    final ad = a.data() as Map<String, dynamic>;
+                    final bd = b.data() as Map<String, dynamic>;
+                    final aExp = (ad['expirationDate'] as Timestamp?)?.toDate() ?? DateTime(2100);
+                    final bExp = (bd['expirationDate'] as Timestamp?)?.toDate() ?? DateTime(2100);
+                    return aExp.compareTo(bExp);
+                  });
 
-                final stocks = snapshot.data!.docs;
+                  // ④ value が items に存在しないなら null にする（ここが超重要）
+                  final ids = docs.map((d) => d.id).toSet();
+                  final currentValue = ids.contains(_selectedStockId) ? _selectedStockId : null;
 
-                return DropdownButtonFormField<String>(
-                  value: _selectedStockId,
-                  isExpanded: true,
-                  items: docs.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
+                  // ⑤ もし存在しない value を持っていたら選択状態をリセット
+                  if (_selectedStockId != null && currentValue == null) {
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      setState(() {
+                        _selectedStockId = null;
+                        _selectedStockRemaining = 0;
+                        _weightController.clear();
+                      });
+                    });
+                  }
 
-                    final remain = ((data['remainingWeight'] ?? data['weight'] ?? 0) as num).toInt();
+                  return DropdownButtonFormField<String>(
+                    key: ValueKey(currentValue), // ✅ これで内部状態のズレも潰せる
+                    value: currentValue,         // ✅ 絶対に _selectedStockId を直で入れない
+                    isExpanded: true,
+                    items: docs.map((doc) {
+                      final data = doc.data() as Map<String, dynamic>;
 
-                    final exp = (data['expirationDate'] as Timestamp?)?.toDate();
-                    final expText = exp != null ? DateFormat('MM/dd').format(exp) : '不明';
+                      final remain = ((data['remainingWeight'] ?? data['weight'] ?? 0) as num).toInt();
 
-                    final storageType = (data['storageType'] ?? '') as String;
-                    final storageLabel = storageType == 'refrigerated'
-                        ? '冷蔵'
-                        : storageType == 'frozen'
-                            ? '冷凍'
-                            : '不明';
+                      final exp = (data['expirationDate'] as Timestamp?)?.toDate();
+                      final expText = exp != null ? DateFormat('MM/dd').format(exp) : '不明';
 
-                    return DropdownMenuItem<String>(
-                      value: doc.id,
-                      child: Text('[$storageLabel] $expText｜残り ${remain}g'),
-                    );
-                  }).toList(),
-                  onChanged: _saving
-                      ? null
-                      : (value) {
-                          if (value == null) return;
+                      final storageType = (data['storageType'] ?? '') as String;
+                      final storageLabel = storageType == 'refrigerated'
+                          ? '冷蔵'
+                          : storageType == 'frozen'
+                              ? '冷凍'
+                              : '不明';
 
-                          final selectedDoc =
-                              stocks.firstWhere((d) => d.id == value);
-                          final data =
-                              selectedDoc.data() as Map<String, dynamic>;
-                          final remain =
-                              ((data['remainingWeight'] ?? data['weight'] ?? 0)
-                                      as num)
-                                  .toInt();
+                      return DropdownMenuItem<String>(
+                        value: doc.id,
+                        child: Text('[$storageLabel] $expText｜残り ${remain}g'),
+                      );
+                    }).toList(),
+                    onChanged: _saving
+                        ? null
+                        : (value) {
+                            if (value == null) return;
 
-                          setState(() {
-                            _selectedStockId = value;
-                            _selectedStockRemaining = remain;
-                          });
-                        },
-                  decoration: const InputDecoration(
-                    border: OutlineInputBorder(),
-                    hintText: '胸肉パックを選択',
-                  ),
-                  validator: (v) =>
-                      v == null ? '胸肉パックを選択してください' : null,
-                );
-              },
-            ),
+                            // ✅ itemsに使った docs から探す（別リストを参照しない）
+                            final selectedDoc = docs.firstWhere((d) => d.id == value);
+                            final data = selectedDoc.data() as Map<String, dynamic>;
+                            final remain = ((data['remainingWeight'] ?? data['weight'] ?? 0) as num).toInt();
+
+                            setState(() {
+                              _selectedStockId = value;
+                              _selectedStockRemaining = remain;
+                            });
+                          },
+                    decoration: const InputDecoration(
+                      border: OutlineInputBorder(),
+                      hintText: '胸肉パックを選択',
+                    ),
+                    validator: (v) => v == null ? '胸肉パックを選択してください' : null,
+                  );
+                },
+              ),
 
               const SizedBox(height: 24),
 
