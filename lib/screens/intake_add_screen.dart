@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart';
 import 'package:tyokin/services/stats_service.dart';
+import 'package:tyokin/native/native_bridge.dart';
 
 class IntakeAddScreen extends StatefulWidget {
   const IntakeAddScreen({super.key});
@@ -135,6 +136,47 @@ class _IntakeAddScreenState extends State<IntakeAddScreen> {
 
       if (!mounted) return;
       _showSnack('摂取記録を登録しました');
+
+// ✅ ここから追加：シェアするか確認
+      final protein = _calcProtein(intakeWeight);
+      final dateText = DateFormat('yyyy/MM/dd').format(_intakeDate);
+      final achieved = protein >= 80;
+      final shareText = achieved
+          ? '🔥 今日も達成！\nたんぱく質 ${protein.toStringAsFixed(0)}g 💪'
+          : '継続中💪\n今日は ${protein.toStringAsFixed(0)}g 摂取！';
+
+      final shouldShare = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('シェアしますか？'),
+          content: Text('摂取記録（$dateText / ${intakeWeight.toInt()}g）を共有できます。'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('あとで'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(context, true),
+              child: const Text('シェアする'),
+            ),
+          ],
+        ),
+      );
+
+      if (shouldShare == true) {
+        try {
+          await NativeBridge.share(
+            text: 'とりレコ🐔 $dateText\n'
+                '摂取量: ${intakeWeight.toInt()}g\n'
+                'たんぱく質: ${protein.toStringAsFixed(0)}g 達成！💪',
+            url: 'https://apps.apple.com/jp/app/torireco-protein-tracker/id6756809518',
+          );
+        } catch (e) {
+          debugPrint('share failed: $e');
+        }
+      }
+      // ✅ 追加ここまで
+
       Navigator.pop(context);
 
     } catch (e) {
