@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 import 'package:tyokin/services/stats_service.dart';
+import 'package:tyokin/native/native_bridge.dart';
 
 class StockListScreen extends StatefulWidget {
   final bool showNearExpiryOnly;
@@ -176,8 +177,19 @@ class _StockListScreenState extends State<StockListScreen> {
                               );
 
                               if (result == true) {
+                                final stockId = validDocs[index].id;
+
+                                // ① Firestoreから削除
                                 await validDocs[index].reference.delete();
 
+                                // ② 通知をキャンセル（失敗しても続行）
+                                try {
+                                  await NativeNotification.cancelByStockId(stockId);
+                                } catch (e) {
+                                  debugPrint('cancelByStockId failed: $e');
+                                }
+
+                                // ③ stats更新（今のままでOK）
                                 try {
                                   await StatsService.recomputeNearExpiryCount(uid!);
                                 } catch (e) {

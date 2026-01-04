@@ -3,6 +3,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:tyokin/services/stats_service.dart';
+import 'package:tyokin/native/native_bridge.dart';
 
 /// 在庫追加（手入力）画面
 /// - 賞味期限（日付）
@@ -75,7 +76,7 @@ class _StockAddScreenState extends State<StockAddScreen> {
     setState(() => _saving = true);
     try {
     // ① まず “在庫登録” だけ確実にやる
-      await FirebaseFirestore.instance
+      final docRef = await FirebaseFirestore.instance
           .collection('users')
           .doc(uid)
           .collection('stocks')
@@ -87,6 +88,19 @@ class _StockAddScreenState extends State<StockAddScreen> {
         'purchaseDate': Timestamp.fromDate(_stripTime(_purchaseDate!)),
         'createdAt': FieldValue.serverTimestamp(),
       });
+
+      // ✅ ここで通知スケジュール（失敗しても在庫登録は成功扱い）
+      try {
+        await NativeNotification.requestPermission(); // 初回だけ許可を取る
+        await NativeNotification.scheduleExpiry(
+          stockId: docRef.id,
+          expirationDate: _stripTime(_expirationDate!),
+          fireHour: 9,
+          fireMinute: 0,
+        );
+      } catch (e) {
+        debugPrint('scheduleExpiry failed: $e');
+      }
       // ② stats再計算は “失敗しても登録成功扱い” にする
       try {
         await StatsService.recomputeNearExpiryCount(uid);
