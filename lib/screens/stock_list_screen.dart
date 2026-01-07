@@ -5,6 +5,7 @@ import 'package:flutter_slidable/flutter_slidable.dart';
 import 'package:intl/intl.dart';
 import 'package:tyokin/services/stats_service.dart';
 import 'package:tyokin/native/native_bridge.dart';
+import 'package:tyokin/widgets/HalfCircleProgress.dart';
 
 class StockListScreen extends StatefulWidget {
   final bool showNearExpiryOnly;
@@ -16,7 +17,7 @@ class StockListScreen extends StatefulWidget {
 }
 
 class _StockListScreenState extends State<StockListScreen> {
-  String _selectedTab = 'refrigerated'; // 通常モード用
+  String _selectedTab = 'refrigerated';
   final uid = FirebaseAuth.instance.currentUser?.uid;
 
   Stream<QuerySnapshot> _getStocksStream(String uid) {
@@ -29,14 +30,12 @@ class _StockListScreenState extends State<StockListScreen> {
         .collection('stocks');
 
     if (widget.showNearExpiryOnly) {
-      // ⚠️ 賞味期限が近いパックのみ
       return ref
           .where('expirationDate',
               isLessThanOrEqualTo: Timestamp.fromDate(limitDate))
           .orderBy('expirationDate')
           .snapshots();
     } else {
-      // 通常モード：冷蔵／冷凍ごと
       return ref
           .where('storageType', isEqualTo: _selectedTab)
           .orderBy('expirationDate')
@@ -47,6 +46,32 @@ class _StockListScreenState extends State<StockListScreen> {
   double _getRemain(Map<String, dynamic> data) {
     final v = data['remainingWeight'] ?? data['weight'] ?? 0;
     return (v as num).toDouble();
+  }
+
+  double _getTotal(Map<String, dynamic> data) {
+    final v = data['weight'] ?? data['remainingWeight'] ?? 0;
+    return (v as num).toDouble();
+  }
+
+  DateTime _stripTime(DateTime d) => DateTime(d.year, d.month, d.day);
+
+  int? _daysLeft(DateTime? exp) {
+    if (exp == null) return null;
+    final today = _stripTime(DateTime.now());
+    final e = _stripTime(exp);
+    return e.difference(today).inDays;
+  }
+
+  Color _badgeColor(int days) {
+    if (days <= 0) return Colors.red;
+    if (days <= 1) return Colors.deepOrange;
+    if (days <= 3) return Colors.orange;
+    return Colors.green;
+  }
+
+  String _daysText(int days) {
+    if (days <= 0) return '期限切れ';
+    return 'あと$days日';
   }
 
   @override
@@ -64,20 +89,17 @@ class _StockListScreenState extends State<StockListScreen> {
           if (!widget.showNearExpiryOnly)
             IconButton(
               icon: const Icon(Icons.add),
-              onPressed: () {
-                Navigator.pushNamed(context, '/add');
-              },
+              onPressed: () => Navigator.pushNamed(context, '/add'),
             ),
         ],
       ),
       body: Column(
         children: [
-          // タブ切り替え（賞味期限モードでは非表示）
           if (!widget.showNearExpiryOnly)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
               child: ToggleButtons(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
                 isSelected: [
                   _selectedTab == 'refrigerated',
                   _selectedTab == 'frozen',
@@ -89,18 +111,17 @@ class _StockListScreenState extends State<StockListScreen> {
                 },
                 children: const [
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.symmetric(horizontal: 18),
                     child: Text('冷蔵'),
                   ),
                   Padding(
-                    padding: EdgeInsets.symmetric(horizontal: 16),
+                    padding: EdgeInsets.symmetric(horizontal: 18),
                     child: Text('冷凍'),
                   ),
                 ],
               ),
             ),
 
-          // Firestoreデータ一覧
           Expanded(
             child: StreamBuilder<QuerySnapshot>(
               stream: _getStocksStream(uid!),
@@ -113,7 +134,8 @@ class _StockListScreenState extends State<StockListScreen> {
                 }
 
                 final docs = snapshot.data!.docs;
-                // ✅ 0gは表示しないだけ
+
+                // 0gは表示しない
                 final validDocs = docs.where((doc) {
                   final data = doc.data() as Map<String, dynamic>;
                   return _getRemain(data) > 0;
@@ -123,31 +145,37 @@ class _StockListScreenState extends State<StockListScreen> {
                   return const Center(child: Text('在庫がありません'));
                 }
 
-                return ListView.builder(
+                return GridView.builder(
+                  padding: const EdgeInsets.fromLTRB(12, 8, 12, 12),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,          // ✅ 2列
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 0.70,     // ✅ 高さを少し確保（好みで調整OK）
+                  ),
                   itemCount: validDocs.length,
                   itemBuilder: (context, index) {
-                    final data = validDocs[index].data() as Map<String, dynamic>;
+                    final doc = validDocs[index];
+                    final data = doc.data() as Map<String, dynamic>;
+
                     final exp = (data['expirationDate'] as Timestamp?)?.toDate();
+                    final expText =
+                        exp != null ? DateFormat('yyyy/MM/dd').format(exp) : '不明';
+
                     final storageType = (data['storageType'] ?? '') as String;
+                    final isRefrig = storageType == 'refrigerated';
 
-                    final remain = _getRemain(data).toInt();
+                    final remain = _getRemain(data);
+                    final total = _getTotal(data);
+                    final progress = total <= 0 ? 0.0 : (remain / total).clamp(0.0, 1.0);
 
-                    final typeLabel = storageType == 'refrigerated'
-                        ? '冷蔵'
-                        : storageType == 'frozen'
-                            ? '冷凍'
-                            : '不明';
-
-                    final expText = exp != null
-                        ? DateFormat('yyyy/MM/dd').format(exp)
-                        : '不明';
+                    final days = _daysLeft(exp);
 
                     return Slidable(
-                      key: ValueKey(validDocs[index].id),
-
+                      key: ValueKey(doc.id),
                       endActionPane: ActionPane(
                         motion: const DrawerMotion(),
-                        extentRatio: 0.25,
+                        extentRatio: 0.35,
                         children: [
                           SlidableAction(
                             onPressed: (_) async {
@@ -170,24 +198,19 @@ class _StockListScreenState extends State<StockListScreen> {
                               );
 
                               if (result == true) {
-                                final stockId = validDocs[index].id;
+                                final stockId = doc.id;
 
-                                // ① Firestoreから削除
-                                await validDocs[index].reference.delete();
+                                await doc.reference.delete();
 
-                                // ② 通知をキャンセル（失敗しても続行）
+                                // 通知キャンセル（失敗しても続行）
                                 try {
                                   await NativeNotification.cancelByStockId(stockId);
-                                } catch (e) {
-                                  debugPrint('cancelByStockId failed: $e');
-                                }
+                                } catch (_) {}
 
-                                // ③ stats更新（今のままでOK）
+                                // stats更新（失敗しても続行）
                                 try {
                                   await StatsService.recomputeNearExpiryCount(uid!);
-                                } catch (e) {
-                                  debugPrint('recomputeNearExpiryCount failed: $e');
-                                }
+                                } catch (_) {}
 
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
@@ -203,37 +226,185 @@ class _StockListScreenState extends State<StockListScreen> {
                           ),
                         ],
                       ),
-                    child: Card(
-                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      child: ListTile(
-                        leading: CircleAvatar(
-                          radius: 22,
-                          backgroundColor: storageType == 'refrigerated'
-                              ? Colors.orangeAccent.withOpacity(0.2)
-                              : Colors.lightBlueAccent.withOpacity(0.2),
-                          child: Icon(
-                            storageType == 'refrigerated'
-                                ? Icons.kitchen
-                                : Icons.ac_unit,
-                            color: storageType == 'refrigerated'
-                                ? Colors.orangeAccent
-                                : Colors.lightBlueAccent,
-                          ),
-                        ),
-                        title: Text(
-                          '残り ${remain}g（$typeLabel）',
-                          style: const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        subtitle: Text('賞味期限：$expText'),
+                      child: _StockTile(
+                        isRefrig: isRefrig,
+                        remainG: remain.toInt(),
+                        totalG: total.toInt(),
+                        expText: expText,
+                        daysLeft: days,
+                        badgeColor: (days == null) ? Colors.grey : _badgeColor(days),
+                        badgeText: (days == null) ? '期限不明' : _daysText(days),
+                        progress: progress,
                       ),
-                    ),
-                  );
+                    );
                   },
                 );
               },
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _StockTile extends StatelessWidget {
+  final bool isRefrig;
+  final int remainG;
+  final int totalG;
+  final String expText;
+  final int? daysLeft;
+  final Color badgeColor;
+  final String badgeText;
+  final double progress;
+  
+
+  const _StockTile({
+    required this.isRefrig,
+    required this.remainG,
+    required this.totalG,
+    required this.expText,
+    required this.daysLeft,
+    required this.badgeColor,
+    required this.badgeText,
+    required this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final icon = isRefrig ? Icons.kitchen : Icons.ac_unit;
+    final label = isRefrig ? '冷蔵' : '冷凍';
+    final progress = remainG / totalG;
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF8F2EA),
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min, // ✅ 溢れにくくする
+          children: [
+            // 上段：アイコン + バッジ
+            Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: isRefrig
+                      ? Colors.orangeAccent.withOpacity(0.18)
+                      : Colors.lightBlueAccent.withOpacity(0.18),
+                  child: Icon(
+                    icon,
+                    color: isRefrig ? Colors.orangeAccent : Colors.lightBlueAccent,
+                  ),
+                ),
+                const Spacer(),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: badgeColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(999),
+                    border: Border.all(color: badgeColor.withOpacity(0.4)),
+                  ),
+                  child: Text(
+                    badgeText,
+                    style: TextStyle(
+                      color: badgeColor,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            const SizedBox(height: 12),
+
+            // 中段：残りg
+            RichText(
+              text: TextSpan(
+                style: DefaultTextStyle.of(context).style,
+                children: [
+                  const TextSpan(
+                    text: '残り ',
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.black54,
+                    ),
+                  ),
+                  TextSpan(
+                    text: '$remainG',
+                    style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  const TextSpan(
+                    text: 'g ',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  TextSpan(
+                    text: '（$label）',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.black.withOpacity(0.6),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // ✅ 半円を主役に（専用スペース確保）
+            Center(
+              child: HalfCircleProgress(
+                progress: progress.clamp(0.0, 1.0),
+                size: 128, // ✅ 大きめ（ここで調整）
+                centerText: '${(progress * 100).round()}%',
+              ),
+            ),
+
+            const SizedBox(height: 8),
+
+            // 下段：期限 & 容量（改行しても崩れない）
+            Text(
+              '賞味期限：$expText',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                color: Colors.black.withOpacity(0.65),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              '容量：$totalG g',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.black.withOpacity(0.45),
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
