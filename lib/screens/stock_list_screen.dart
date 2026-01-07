@@ -63,13 +63,6 @@ class _StockListScreenState extends State<StockListScreen> {
         actions: [
           if (!widget.showNearExpiryOnly)
             IconButton(
-              icon: const Icon(Icons.calendar_today),
-              onPressed: () {
-                Navigator.pushNamed(context, '/calendar');
-              },
-            ),
-          if (!widget.showNearExpiryOnly)
-            IconButton(
               icon: const Icon(Icons.add),
               onPressed: () {
                 Navigator.pushNamed(context, '/add');
@@ -242,18 +235,6 @@ class _StockListScreenState extends State<StockListScreen> {
           ),
         ],
       ),
-
-      // 🚫 賞味期限モードではボタン非表示
-      floatingActionButton: widget.showNearExpiryOnly
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.pushNamed(context, '/intake');
-              },
-              icon: const Icon(Icons.fitness_center),
-              label: const Text('摂取記録'),
-              backgroundColor: Colors.orangeAccent,
-            ),
     );
   }
 }

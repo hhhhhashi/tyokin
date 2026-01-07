@@ -8,6 +8,7 @@ import 'screens/intake_add_screen.dart';
 import 'screens/intake_calendar_screen.dart';
 import 'screens/stock_add_screen.dart';
 import 'screens/stock_list_screen.dart';
+import 'screens/growth_history_screen.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -45,7 +46,7 @@ class TorirecoApp extends StatelessWidget {
         '/intake': (context) => const IntakeAddScreen(), // ←これを追加
         '/calendar': (context) => const IntakeCalendarScreen(), // ←追加
         '/stockList': (context) => const StockListScreen(), 
-        '/stockList': (context) => const StockListScreen(), 
+        '/growthHistory': (_) => const GrowthHistoryScreen(),
       },
     );
   }

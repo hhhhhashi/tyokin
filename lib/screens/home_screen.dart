@@ -24,7 +24,7 @@ class _HomeScreenState extends State<HomeScreen> {
       // ✅ 中央＋ボタン
       floatingActionButtonLocation: FloatingActionButtonLocation.centerDocked,
       floatingActionButton: FloatingActionButton(
-        onPressed: _openQuickAddSheet,
+        onPressed: () => Navigator.pushNamed(context, '/intake'),
         child: const Icon(Icons.add),
       ),
 
@@ -87,38 +87,70 @@ class _HomeScreenState extends State<HomeScreen> {
                     // =========================
                     // A) 鶏の成長（主役）
                     // =========================
-                    Container(
-                      height: 220,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Theme.of(context).colorScheme.surface,
-                        borderRadius: BorderRadius.circular(20),
-                        border: Border.all(color: Colors.black12),
-                      ),
-                      child: Column(
-                        children: [
-                          Expanded(
-                            child: Image.asset(
-                              'assets/images/$stage',
-                              fit: BoxFit.contain,
+                    // =========================
+                    // A) 鶏の成長（主役） + 履歴導線
+                    // =========================
+                    InkWell(
+                      borderRadius: BorderRadius.circular(20),
+                      onTap: () {
+                        Navigator.pushNamed(context, '/growthHistory');
+                      },
+                      child: Container(
+                        height: 220,
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Theme.of(context).colorScheme.surface,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: Colors.black12),
+                        ),
+                        child: Column(
+                          children: [
+                            // ✅ 右上に「履歴」導線（見た目がカードっぽくならないようチップ風）
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Row(
+                                    children: const [
+                                      Icon(Icons.timeline, size: 16),
+                                      SizedBox(width: 6),
+                                      Text('履歴', style: TextStyle(fontSize: 12)),
+                                      SizedBox(width: 4),
+                                      Icon(Icons.chevron_right, size: 16),
+                                    ],
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'ランク：${_getRankName(totalIntakeG)}',
-                            style: const TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                              color: Colors.orange,
+
+                            Expanded(
+                              child: Image.asset(
+                                'assets/images/$stage',
+                                fit: BoxFit.contain,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            _getChickenMessage(totalIntakeG),
-                            style: const TextStyle(fontSize: 13, color: Colors.black54),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
+                            const SizedBox(height: 8),
+                            Text(
+                              'ランク：${_getRankName(totalIntakeG)}',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.orange,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              _getChickenMessage(totalIntakeG),
+                              style: const TextStyle(fontSize: 13, color: Colors.black54),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
                       ),
                     ),
 
@@ -216,42 +248,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 );
               },
             ),
-    );
-  }
-
-  // ✅ 中央＋のシート
-  void _openQuickAddSheet() {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (_) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: const Icon(Icons.fitness_center),
-                  title: const Text('摂取を記録する'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.pushNamed(context, '/intake');
-                  },
-                ),
-                ListTile(
-                  leading: const Icon(Icons.inventory),
-                  title: const Text('在庫を追加する'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.pushNamed(context, '/add');
-                  },
-                ),
-              ],
-            ),
-          ),
-        );
-      },
     );
   }
 
