@@ -91,68 +91,95 @@ class _HomeScreenState extends State<HomeScreen> {
                     // A) 鶏の成長（主役） + 履歴導線
                     // =========================
                     InkWell(
-                      borderRadius: BorderRadius.circular(20),
-                      onTap: () {
-                        Navigator.pushNamed(context, '/growthHistory');
-                      },
-                      child: Container(
-                        height: 220,
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Theme.of(context).colorScheme.surface,
-                          borderRadius: BorderRadius.circular(20),
-                          border: Border.all(color: Colors.black12),
-                        ),
-                        child: Column(
-                          children: [
-                            // ✅ 右上に「履歴」導線（見た目がカードっぽくならないようチップ風）
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.05),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Row(
-                                    children: const [
-                                      Icon(Icons.timeline, size: 16),
-                                      SizedBox(width: 6),
-                                      Text('履歴', style: TextStyle(fontSize: 12)),
-                                      SizedBox(width: 4),
-                                      Icon(Icons.chevron_right, size: 16),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
+  borderRadius: BorderRadius.circular(20),
+  onTap: () {
+    Navigator.pushNamed(context, '/growthHistory');
+  },
+  child: Container(
+    width: double.infinity, // ← 横幅いっぱい
+    height: 400,            // ← ここで高さを固定
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(20),
+    ),
+    child: ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Stack(
+        children: [
+          // ✅ 背景画像（枠いっぱい）
+          Positioned.fill(
+            child: Image.asset(
+              'assets/images/$stage',
+              fit: BoxFit.cover,
+              alignment: Alignment.center,
+            ),
+          ),
 
-                            Expanded(
-                              child: Image.asset(
-                                'assets/images/$stage',
-                                fit: BoxFit.contain,
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'ランク：${_getRankName(totalIntakeG)}',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w600,
-                                color: Colors.orange,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              _getChickenMessage(totalIntakeG),
-                              style: const TextStyle(fontSize: 13, color: Colors.black54),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
-                        ),
-                      ),
+          // ✅ うっすらオーバーレイ（文字読みやすく）
+          Positioned.fill(
+            child: Container(
+              color: Colors.white.withOpacity(0.12),
+            ),
+          ),
+
+          // ✅ 履歴ボタン（画像右上に固定）
+          Positioned(
+            top: 12,
+            right: 12,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.85),
+                borderRadius: BorderRadius.circular(14),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 8,
+                  ),
+                ],
+              ),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(14),
+                onTap: () {
+                  Navigator.pushNamed(context, '/growthHistory');
+                },
+                child: const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Text(
+                    '履歴',
+                    style: TextStyle(
+                      fontWeight: FontWeight.bold,
                     ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+
+          // ✅ コメント（画像下部）
+          // ✅ コメント（画像の左下・枠なし）
+          Positioned(
+            left: 14,
+            bottom: 8,
+            child: Text(
+              _getChickenMessage(totalIntakeG),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.bold,
+                color: Colors.black.withOpacity(0.75),
+                shadows: [
+                  Shadow(
+                    offset: const Offset(0, 1),
+                    blurRadius: 4,
+                    color: Colors.white.withOpacity(0.6),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    ),
+  ),
+),
 
                     const SizedBox(height: 16),
 
@@ -259,14 +286,6 @@ class _HomeScreenState extends State<HomeScreen> {
     return 'chicken_stage4.png';
   }
 
-  // 🏅 ランク名
-  String _getRankName(double totalProtein) {
-    if (totalProtein < 1000) return 'ヒヨコ';
-    if (totalProtein < 5000) return '若鶏';
-    if (totalProtein < 10000) return 'ブロイラー';
-    return '筋トリ様';
-  }
-
   // 🚀 次の進化までの目標値
   double _getNextGoal(double totalProtein) {
     if (totalProtein < 1000) return 1000;
@@ -277,9 +296,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
   // 💬 鶏のセリフ
   String _getChickenMessage(double totalProtein) {
-    if (totalProtein < 1000) return 'まだまだこれからッス！🔥';
-    if (totalProtein < 5000) return 'だいぶ締まってきたッス💪';
-    if (totalProtein < 10000) return 'タンパク質こそ力！🍗';
-    return '鶏界の頂点に立ったッス！👑';
+    if (totalProtein < 1000) return 'まだまだこれからッス！';
+    if (totalProtein < 5000) return 'だいぶ締まってきたッスね！';
+    if (totalProtein < 10000) return 'タンパク質こそ力！';
+    return '鶏界の頂点に立ったッス！';
   }
 }
